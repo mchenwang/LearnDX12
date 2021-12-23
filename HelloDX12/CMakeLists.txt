@@ -26,7 +26,7 @@ endif()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ../target/)
 
 
-add_executable(${PROJECT_NAME} ${SOURCES})
+add_executable(${PROJECT_NAME} WIN32 ${SOURCES})
 
 target_include_directories(${PROJECT_NAME}
     PRIVATE 

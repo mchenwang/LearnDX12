@@ -77,8 +77,6 @@ bool g_TearingSupported = false;
 bool g_Fullscreen = false;
 
 // Window callback function.
-LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM){
-    return 0;
-}
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 #endif
