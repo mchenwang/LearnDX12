@@ -7,7 +7,9 @@ if( MSVC )
 endif()
 
 set(SOURCES
-    # src/helper.cpp
+    src/stdafx.cpp
+    src/DXWindow.cpp
+    src/Win32App.cpp
     src/main.cpp
 )
 
