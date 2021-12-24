@@ -2,7 +2,7 @@
 
 extern void EnableDebugLayer();
 
-Win32Application::Win32Application(DXWindow* w, HINSTANCE hInst) noexcept
+Win32Application::Win32Application(std::shared_ptr<DXWindow> w, HINSTANCE hInst) noexcept
 : window(w)
 {
     Init(hInst);
@@ -59,7 +59,7 @@ HWND Win32Application::CreateWindow(const wchar_t* windowClassName, HINSTANCE hI
         NULL,
         NULL,
         hInst,
-        window
+        window.get()
     );
 
     assert(hWnd && "Failed to create window");

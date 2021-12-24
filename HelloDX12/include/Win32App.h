@@ -5,14 +5,14 @@
 
 class Win32Application
 { 
-    DXWindow* window;
+    std::shared_ptr<DXWindow> window;
     void RegisterWindowClass(HINSTANCE hInst, const wchar_t* windowClassName);
     HWND CreateWindow(const wchar_t* windowClassName, HINSTANCE hInst,
         const wchar_t* windowTitle, uint32_t width, uint32_t height);
 public:
     Win32Application() = delete;
     ~Win32Application() {}
-    Win32Application(DXWindow* w, HINSTANCE hInst) noexcept;
+    Win32Application(std::shared_ptr<DXWindow> w, HINSTANCE hInst) noexcept;
     void Init(HINSTANCE);
     int Run();
     HWND GetHwnd();
