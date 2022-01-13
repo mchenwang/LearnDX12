@@ -1,9 +1,43 @@
-#include "DXWindow.h"
+﻿#include "DXWindow.h"
 #include "helper.h"
 #include <chrono>
+#include <dxgidebug.h>
+
+static uint64_t Signal(ComPtr<ID3D12CommandQueue> commandQueue, ComPtr<ID3D12Fence> fence,
+    uint64_t& fenceValue)
+{
+    uint64_t fenceValueForSignal = ++fenceValue;
+    ThrowIfFailed(commandQueue->Signal(fence.Get(), fenceValueForSignal));
+
+    return fenceValueForSignal;
+}
+
+static void WaitForFenceValue(ComPtr<ID3D12Fence> fence, uint64_t fenceValue, HANDLE fenceEvent,
+    std::chrono::milliseconds duration = std::chrono::milliseconds::max() )
+{
+    if (fence->GetCompletedValue() < fenceValue)
+    {
+        ThrowIfFailed(fence->SetEventOnCompletion(fenceValue, fenceEvent));
+        ::WaitForSingleObject(fenceEvent, static_cast<DWORD>(duration.count()));
+    }
+}
+
+static void Flush(ComPtr<ID3D12CommandQueue> commandQueue, ComPtr<ID3D12Fence> fence,
+    uint64_t& fenceValue, HANDLE fenceEvent )
+{
+    uint64_t fenceValueForSignal = Signal(commandQueue, fence, fenceValue);
+    WaitForFenceValue(fence, fenceValueForSignal, fenceEvent);
+}
 
 DXWindow::DXWindow(const wchar_t* name, uint32_t w, uint32_t h) noexcept
-: m_Name(name), m_Width(w), m_Height(h) {}
+    : m_Name(name)
+    , m_Width(w)
+    , m_Height(h)
+    , m_Viewport(0.0f, 0.0f, static_cast<float>(w), static_cast<float>(h))
+    , m_ScissorRect(0, 0, static_cast<LONG>(w), static_cast<LONG>(h))
+{
+    m_AssetsPath = shader_path;
+}
 
 void DXWindow::ParseCommandLineArguments()
 {
@@ -54,6 +88,11 @@ bool DXWindow::CheckTearingSupport()
     }
 
     return allowTearing == TRUE;
+}
+
+std::wstring DXWindow::GetAssetFullPath(LPCWSTR assetName)
+{
+    return m_AssetsPath + assetName;
 }
 
 ComPtr<IDXGIAdapter4> DXWindow::GetAdapter() const
@@ -137,6 +176,10 @@ void DXWindow::CreateDevice()
             D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,   // I'm really not sure how to avoid this message.
             D3D12_MESSAGE_ID_MAP_INVALID_NULLRANGE,                         // This warning occurs when using capture frame while graphics debugging.
             D3D12_MESSAGE_ID_UNMAP_INVALID_NULLRANGE,                       // This warning occurs when using capture frame while graphics debugging.
+            
+            // Workarounds for debug layer issues on hybrid-graphics systems
+            D3D12_MESSAGE_ID_EXECUTECOMMANDLISTS_WRONGSWAPCHAINBUFFERREFERENCE,
+            D3D12_MESSAGE_ID_RESOURCE_BARRIER_MISMATCHING_COMMAND_LIST_TYPE,
         };
 
         D3D12_INFO_QUEUE_FILTER NewFilter = {};
@@ -163,6 +206,12 @@ void DXWindow::CreateCommandQueue(D3D12_COMMAND_LIST_TYPE type)
     desc.NodeMask = 0;
 
     ThrowIfFailed(m_Device->CreateCommandQueue(&desc, IID_PPV_ARGS(&m_CommandQueue)));
+
+    // create command allocator
+    for (int i = 0; i < m_NumFrames; ++i)
+    {
+        ThrowIfFailed(m_Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_CommandAllocators[i])));
+    }
 }
 
 void DXWindow::CreateSwapChain()
@@ -229,15 +278,11 @@ void DXWindow::UpdateRenderTargetViews()
     }
 }
 
-void DXWindow::CreateCommandList(D3D12_COMMAND_LIST_TYPE type)
+void DXWindow::CreateCommandList(D3D12_COMMAND_LIST_TYPE type, ID3D12PipelineState* pipelineState)
 {
-    for (int i = 0; i < m_NumFrames; ++i)
-    {
-        ThrowIfFailed(m_Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_CommandAllocators[i])));
-    }
     ThrowIfFailed(m_Device->CreateCommandList(0, type, 
         m_CommandAllocators[m_CurrentBackBufferIndex].Get(), 
-        nullptr, IID_PPV_ARGS(&m_CommandList)));
+        pipelineState, IID_PPV_ARGS(&m_CommandList)));
     
     ThrowIfFailed(m_CommandList->Close());
 }
@@ -246,53 +291,157 @@ void DXWindow::CreateFence()
 {
     ThrowIfFailed(m_Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_Fence)));
     m_FenceEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL);
+    if (m_FenceEvent == nullptr)
+    {
+        ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+    }
+}
+
+/* 管线初始化步骤：
+ *   1. 创建 device
+ *   2. 创建 CommandQueue
+ *   3. 创建 swap chain
+ *   4. 创建描述符 heap
+ *   5. 创建 RTV
+ *   6. 创建 同步变量
+ */
+void DXWindow::LoadPipeline()
+{
+    CreateDevice();
+    CreateCommandQueue(D3D12_COMMAND_LIST_TYPE_DIRECT);
+    CreateSwapChain();
+    CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    UpdateRenderTargetViews(); // create RTV
+    CreateFence();
+}
+
+/* 资源初始化步骤：
+ *   1. 创建 root signature
+ *   2. 创建 pipeline state，编译导入 Shader
+ *   [3.] 创建 command list，可以和 command queue 同时创建
+ *   4. 创建 vertex buffer
+ */
+void DXWindow::LoadAssets()
+{
+    // 1.
+    {
+        CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
+        rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+        ComPtr<ID3DBlob> signature;
+        ComPtr<ID3DBlob> error;
+        ThrowIfFailed(D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error));
+        ThrowIfFailed(m_Device->CreateRootSignature(
+            0,
+            signature->GetBufferPointer(),
+            signature->GetBufferSize(),
+            IID_PPV_ARGS(&m_RootSignature)));
+    }
+
+    // 2.
+    {
+        ComPtr<ID3DBlob> vertexShader;
+        ComPtr<ID3DBlob> pixelShader;
+
+#if defined(_DEBUG)
+        UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+        UINT compileFlags = 0;
+#endif
+
+        ThrowIfFailed(D3DCompileFromFile(
+            GetAssetFullPath(L"shaders.hlsl").c_str(),
+            nullptr, nullptr, "VSMain", "vs_5_0",
+            compileFlags, 0, &vertexShader, nullptr
+            )
+        );
+        ThrowIfFailed(D3DCompileFromFile(
+            GetAssetFullPath(L"shaders.hlsl").c_str(),
+            nullptr, nullptr, "PSMain", "ps_5_0",
+            compileFlags, 0, &pixelShader, nullptr
+            )
+        );
+
+        D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
+        {
+            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+        };
+
+        // Describe and create the graphics pipeline state object (PSO).
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+        psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
+        psoDesc.pRootSignature = m_RootSignature.Get();
+        psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
+        psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
+        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+        psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+        psoDesc.DepthStencilState.DepthEnable = FALSE;
+        psoDesc.DepthStencilState.StencilEnable = FALSE;
+        psoDesc.SampleMask = UINT_MAX;
+        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        psoDesc.NumRenderTargets = 1;
+        psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+        psoDesc.SampleDesc.Count = 1;
+        ThrowIfFailed(m_Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_PipelineState)));
+    }
+
+    // 3. 根据pipeline state创建command list可减少CPU开销
+    CreateCommandList(D3D12_COMMAND_LIST_TYPE_DIRECT, m_PipelineState.Get());
+    // 或者先使用为null的pipeline state创建command list，再set pipeline state
+    // m_CommandList->SetPipelineState(m_PipelineState.Get());
+
+    // 4.
+    {
+        Vertex triangleVertices[] =
+        {
+            { { 0.0f, 0.25f, 0.0f }, { 1.0f, .0f, .0f, 1.0f } },
+            { { 0.25f, -0.25f, 0.0f }, { .0f, 1.0f, .0f, 1.0f } },
+            { { -0.25f, -0.25f, 0.0f }, { .0f, .0f, 1.0f, 1.0f } }
+        };
+        const UINT vertexBufferSize = sizeof(triangleVertices);
+        ThrowIfFailed(m_Device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&m_VertexBuffer)));
+            
+        // Copy the triangle data to the vertex buffer.
+        UINT8* pVertexDataBegin;
+        CD3DX12_RANGE readRange(0, 0);        // We do not intend to read from this resource on the CPU.
+        ThrowIfFailed(m_VertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));
+        memcpy(pVertexDataBegin, triangleVertices, sizeof(triangleVertices));
+        m_VertexBuffer->Unmap(0, nullptr);
+
+        // Initialize the vertex buffer view.
+        m_VertexBufferView.BufferLocation = m_VertexBuffer->GetGPUVirtualAddress();
+        m_VertexBufferView.StrideInBytes = sizeof(Vertex);
+        m_VertexBufferView.SizeInBytes = vertexBufferSize;
+    }
+
+    // {
+    //     m_FrameFenceValues[m_CurrentBackBufferIndex] = Signal(m_CommandQueue, m_Fence, m_FenceValue);
+    //     m_CurrentBackBufferIndex = m_SwapChain->GetCurrentBackBufferIndex();
+
+    //     WaitForFenceValue(m_Fence, m_FrameFenceValues[m_CurrentBackBufferIndex], m_FenceEvent);
+    // }
 }
 
 void DXWindow::Init(HWND hWnd)
 {
     m_hWnd = hWnd;
     
+    m_VSync = false;
     m_TearingSupported = CheckTearingSupport();
     // Initialize the global window rect variable.
     ::GetWindowRect(m_hWnd, &m_WindowRect);
 
-    CreateDevice();
-    CreateCommandQueue(D3D12_COMMAND_LIST_TYPE_DIRECT);
-    CreateSwapChain();
-    CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-
-    UpdateRenderTargetViews();
-
-    CreateCommandList(D3D12_COMMAND_LIST_TYPE_DIRECT);
-    CreateFence();
+    LoadPipeline();
+    LoadAssets();
     
     m_IsInitialized = true;
-}
-
-static uint64_t Signal(ComPtr<ID3D12CommandQueue> commandQueue, ComPtr<ID3D12Fence> fence,
-    uint64_t& fenceValue)
-{
-    uint64_t fenceValueForSignal = ++fenceValue;
-    ThrowIfFailed(commandQueue->Signal(fence.Get(), fenceValueForSignal));
-
-    return fenceValueForSignal;
-}
-
-static void WaitForFenceValue(ComPtr<ID3D12Fence> fence, uint64_t fenceValue, HANDLE fenceEvent,
-    std::chrono::milliseconds duration = std::chrono::milliseconds::max() )
-{
-    if (fence->GetCompletedValue() < fenceValue)
-    {
-        ThrowIfFailed(fence->SetEventOnCompletion(fenceValue, fenceEvent));
-        ::WaitForSingleObject(fenceEvent, static_cast<DWORD>(duration.count()));
-    }
-}
-
-static void Flush(ComPtr<ID3D12CommandQueue> commandQueue, ComPtr<ID3D12Fence> fence,
-    uint64_t& fenceValue, HANDLE fenceEvent )
-{
-    uint64_t fenceValueForSignal = Signal(commandQueue, fence, fenceValue);
-    WaitForFenceValue(fence, fenceValueForSignal, fenceEvent);
 }
 
 void DXWindow::Destroy()
@@ -365,7 +514,13 @@ void DXWindow::Render()
     auto backBuffer = m_BackBuffers[m_CurrentBackBufferIndex];
 
     commandAllocator->Reset();
-    m_CommandList->Reset(commandAllocator.Get(), nullptr);
+    m_CommandList->Reset(commandAllocator.Get(), m_PipelineState.Get());
+    
+    // Set necessary state.
+    m_CommandList->SetGraphicsRootSignature(m_RootSignature.Get());
+    m_CommandList->RSSetViewports(1, &m_Viewport);
+    m_CommandList->RSSetScissorRects(1, &m_ScissorRect);
+        
     // Clear the render target.
     {
         CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -373,12 +528,19 @@ void DXWindow::Render()
             D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
         m_CommandList->ResourceBarrier(1, &barrier);
-        FLOAT clearColor[] = { 0.f, 0.f, 0.f, 1.0f };
+
         CD3DX12_CPU_DESCRIPTOR_HANDLE rtv(m_RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
             m_CurrentBackBufferIndex, m_RTVDescriptorSize);
+        m_CommandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
 
+        FLOAT clearColor[] = { 0.f, 0.f, 0.f, 1.0f };
         m_CommandList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
     }
+    // Set obj
+    m_CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_CommandList->IASetVertexBuffers(0, 1, &m_VertexBufferView);
+    m_CommandList->DrawInstanced(3, 1, 0, 0);
+
     // Present
     {
         CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(

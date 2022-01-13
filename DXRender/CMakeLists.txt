@@ -27,14 +27,20 @@ endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ../target/)
 
+configure_file(
+    "${PROJECT_SOURCE_DIR}/config/path.h.in"
+    "${PROJECT_BINARY_DIR}/config/path.h"
+)
 
 add_executable(${PROJECT_NAME} WIN32 ${SOURCES})
 
 target_include_directories(${PROJECT_NAME}
     PRIVATE 
         ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_BINARY_DIR}/config
 )
 # DX12 libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE
     d3d12.lib dxgi.lib dxguid.lib
+    D3DCompiler.lib
 )
