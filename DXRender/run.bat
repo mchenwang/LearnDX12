@@ -1,8 +1,9 @@
 @echo off
-if %1 == 1 (
+set para="%1"
+if %para% == "build" (
     cmake -G "Visual Studio 16 2019" -S . -B build
     cmake --build build --target learndx12
-) else if %1 == 2 (
+) else (
     cmake --build build --target learndx12
 )
 .\target\Debug\learndx12.exe
