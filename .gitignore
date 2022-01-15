@@ -1,3 +1,5 @@
 build
 target
 .vscode
+DXRender/shader/fxc.exe
+DXRender/shader/compileShader.bat
