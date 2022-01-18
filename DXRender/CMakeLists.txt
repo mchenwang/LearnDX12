@@ -9,7 +9,10 @@ endif()
 set(SOURCES
     src/stdafx.cpp
     src/DXWindow.cpp
-    src/Win32App.cpp
+    src/SwapChain.cpp
+    src/CommandQueue.cpp
+    src/DescriptorHeap.cpp
+    src/Application.cpp
     src/main.cpp
 )
 
