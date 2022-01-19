@@ -54,8 +54,7 @@ void DXWindow::LoadPipeline()
     m_RTVHeap = std::make_shared<RTVDescriptorHeap>(m_device, SwapChain::NUM_OF_FRAMES);
     m_DSVHeap = std::make_shared<DSVDescriptorHeap>(m_device, 1);
     
-    auto RTVHandle = m_RTVHeap->GetDescriptorHandle(m_swapChain->GetCurrentBackBufferIndex());
-    m_swapChain->UpdateRenderTargetViews(static_cast<CD3DX12_CPU_DESCRIPTOR_HANDLE>(RTVHandle));
+    m_swapChain->UpdateRenderTargetViews(m_RTVHeap);
 }
 
 static Vertex g_Vertices[8] = {
@@ -435,9 +434,11 @@ void DXWindow::Resize(uint32_t width, uint32_t height)
 {
     if (m_Width != width || m_Height != height)
     {
-        auto RTVHandle = m_RTVHeap->GetDescriptorHandle(m_swapChain->GetCurrentBackBufferIndex());
-        m_swapChain->Resize(width, height, static_cast<CD3DX12_CPU_DESCRIPTOR_HANDLE>(RTVHandle));
+        m_swapChain->Resize(width, height, m_RTVHeap);
         
+        m_Width = std::max(1u, width);
+        m_Height = std::max(1u, height);
+
         m_Viewport = CD3DX12_VIEWPORT(0.f, 0.f,
             static_cast<float>(m_Width), static_cast<float>(m_Height));
         

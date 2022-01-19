@@ -3,7 +3,7 @@
 
 #include <d3d12.h>
 #include <wrl.h>
-
+#include "d3dx12.h"
 using Microsoft::WRL::ComPtr;
 
 class DescriptorHeap
@@ -25,18 +25,16 @@ public:
     static const D3D12_DESCRIPTOR_HEAP_TYPE S_TYPE = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 private:
     UINT m_RTVDescriptorSize;
-
 public:
     RTVDescriptorHeap(ComPtr<ID3D12Device2> device, UINT num, D3D12_DESCRIPTOR_HEAP_FLAGS flag = D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
     D3D12_DESCRIPTOR_HEAP_TYPE GetType() const;
-    D3D12_CPU_DESCRIPTOR_HANDLE GetDescriptorHandle(UINT currentBackBufferIndex) const;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE GetDescriptorHandle(UINT currentBackBufferIndex) const;
 };
 
 class DSVDescriptorHeap : public DescriptorHeap
 {
 public:
     static const D3D12_DESCRIPTOR_HEAP_TYPE S_TYPE = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-
 public:
     DSVDescriptorHeap(ComPtr<ID3D12Device2> device, UINT num, D3D12_DESCRIPTOR_HEAP_FLAGS flag = D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
 

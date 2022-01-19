@@ -39,7 +39,7 @@ D3D12_DESCRIPTOR_HEAP_TYPE DSVDescriptorHeap::GetType() const
     return S_TYPE;
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE RTVDescriptorHeap::GetDescriptorHandle(UINT currentBackBufferIndex) const
+CD3DX12_CPU_DESCRIPTOR_HANDLE RTVDescriptorHeap::GetDescriptorHandle(UINT currentBackBufferIndex) const
 {
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtv(m_heap->GetCPUDescriptorHandleForHeapStart(), 
         currentBackBufferIndex, m_RTVDescriptorSize);

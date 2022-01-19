@@ -29,7 +29,7 @@ static bool CheckTearingSupport()
     return allowTearing == TRUE;
 }
 
-void SwapChain::ClearRenderTarget(ComPtr<ID3D12GraphicsCommandList2> d3dCommandList, D3D12_CPU_DESCRIPTOR_HANDLE rtv, D3D12_CPU_DESCRIPTOR_HANDLE dsv)
+void SwapChain::ClearRenderTarget(ComPtr<ID3D12GraphicsCommandList2> d3dCommandList, D3D12_CPU_DESCRIPTOR_HANDLE& rtv, D3D12_CPU_DESCRIPTOR_HANDLE& dsv)
 {
     auto backBuffer = m_backBuffers[m_currentBackBufferIndex];
     CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -60,7 +60,7 @@ void SwapChain::Present(ComPtr<ID3D12GraphicsCommandList2> d3dCommandList)
     m_commandQueue->WaitForFenceValue(m_frameFenceValues[m_currentBackBufferIndex]);
 }
 
-void SwapChain::Resize(UINT width, UINT height, CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle)
+void SwapChain::Resize(UINT width, UINT height, std::shared_ptr<RTVDescriptorHeap>& rtvHeap)
 {
     if (m_width == width && m_height == height) return ;
     
@@ -81,7 +81,7 @@ void SwapChain::Resize(UINT width, UINT height, CD3DX12_CPU_DESCRIPTOR_HANDLE rt
     
     m_currentBackBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
 
-    UpdateRenderTargetViews(rtvHandle);
+    UpdateRenderTargetViews(rtvHeap);
 }
 
 UINT SwapChain::GetCurrentBackBufferIndex() const
@@ -89,17 +89,17 @@ UINT SwapChain::GetCurrentBackBufferIndex() const
     return m_currentBackBufferIndex;
 }
 
-void SwapChain::UpdateRenderTargetViews(CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle)
+void SwapChain::UpdateRenderTargetViews(std::shared_ptr<RTVDescriptorHeap>& rtvHeap)
 {
     auto rtvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-    
+    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtvHeap->GetHeap()->GetCPUDescriptorHandleForHeapStart());
     for (int i = 0; i < NUM_OF_FRAMES; ++i)
     {
-        ComPtr<ID3D12Resource> backBuffer;
-        ThrowIfFailed(m_swapChain->GetBuffer(i, IID_PPV_ARGS(&backBuffer)));
-        m_device->CreateRenderTargetView(backBuffer.Get(), nullptr, rtvHandle);
-        m_backBuffers[i] = backBuffer;
-        rtvHandle.Offset(rtvDescriptorSize);
+        // ComPtr<ID3D12Resource> backBuffer;
+        ThrowIfFailed(m_swapChain->GetBuffer(i, IID_PPV_ARGS(&m_backBuffers[i])));
+        m_device->CreateRenderTargetView(m_backBuffers[i].Get(), nullptr, rtvHandle);
+        //  = backBuffer;
+        rtvHandle.Offset(1, rtvDescriptorSize);
     }
 }
 
