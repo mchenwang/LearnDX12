@@ -412,6 +412,9 @@ void DXWindow::SetFullscreen(bool fullscreen)
                 SWP_FRAMECHANGED | SWP_NOACTIVATE);
 
             ::ShowWindow(m_hWnd, SW_MAXIMIZE);
+
+            m_Width = monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left;
+            m_Height = monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top;
         }
         else
         {
@@ -426,7 +429,17 @@ void DXWindow::SetFullscreen(bool fullscreen)
                 SWP_FRAMECHANGED | SWP_NOACTIVATE);
 
             ::ShowWindow(m_hWnd, SW_NORMAL);
+
+            m_Width = m_WindowRect.right - m_WindowRect.left;
+            m_Height = m_WindowRect.bottom - m_WindowRect.top;
         }
+        
+        m_swapChain->Resize(m_Width, m_Height, m_RTVHeap);
+        m_Viewport = CD3DX12_VIEWPORT(0.f, 0.f,
+            static_cast<float>(m_Width), static_cast<float>(m_Height));
+        m_ScissorRect = CD3DX12_RECT(0, 0, static_cast<LONG>(m_Width), static_cast<LONG>(m_Height));
+        
+        ResizeDepthBuffer(m_Width, m_Height);
     }
 }
 
@@ -441,7 +454,8 @@ void DXWindow::Resize(uint32_t width, uint32_t height)
 
         m_Viewport = CD3DX12_VIEWPORT(0.f, 0.f,
             static_cast<float>(m_Width), static_cast<float>(m_Height));
-        
+        m_ScissorRect = CD3DX12_RECT(0, 0, static_cast<LONG>(m_Width), static_cast<LONG>(m_Height));
+
         ResizeDepthBuffer(m_Width, m_Height);
     }
 }

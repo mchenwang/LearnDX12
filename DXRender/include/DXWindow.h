@@ -65,8 +65,6 @@ class DXWindow
     DirectX::XMMATRIX m_ViewMatrix;
     DirectX::XMMATRIX m_ProjectionMatrix;
 
-    static bool CheckTearingSupport();
-
     std::wstring GetAssetFullPath(LPCWSTR assetName);
 
     void LoadPipeline();
