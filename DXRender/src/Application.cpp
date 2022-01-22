@@ -7,19 +7,18 @@ static Application* g_app = nullptr;
 
 static LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    auto app = Application::GetInstance();
-    if (app->IsWindowCreated())
+    return Application::GetInstance()->OnWndProc(hWnd, message, wParam, lParam);
+}
+LRESULT Application::OnWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    if (m_window != nullptr && IsWindowCreated())
     {
-        return app->OnWndProc(hWnd, message, wParam, lParam);
+        return m_window->OnWndProc(hWnd, message, wParam, lParam);
     }
     else
     {
         return ::DefWindowProcW(hWnd, message, wParam, lParam);
     }
-}
-LRESULT Application::OnWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
-{
-    return m_window->OnWndProc(hWnd, message, wParam, lParam);
 }
 
 inline static void EnableDebugLayer()
@@ -216,6 +215,10 @@ int Application::Run(std::shared_ptr<DXWindow> window)
     }
 
     window->Destroy();
+    m_device->Release();
+    m_adapter->Release();
+    //m_device = nullptr;
+
     return static_cast<int>(msg.wParam);
 }
 

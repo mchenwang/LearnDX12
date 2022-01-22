@@ -57,26 +57,26 @@ void DXWindow::LoadPipeline()
     m_swapChain->UpdateRenderTargetViews(m_RTVHeap);
 }
 
-static Vertex g_Vertices[8] = {
-    { XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f) }, // 0
-    { XMFLOAT3(-1.0f,  1.0f, -1.0f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) }, // 1
-    { XMFLOAT3(1.0f,  1.0f, -1.0f), XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f) }, // 2
-    { XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) }, // 3
-    { XMFLOAT3(-1.0f, -1.0f,  1.0f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) }, // 4
-    { XMFLOAT3(-1.0f,  1.0f,  1.0f), XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f) }, // 5
-    { XMFLOAT3(1.0f,  1.0f,  1.0f), XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) }, // 6
-    { XMFLOAT3(1.0f, -1.0f,  1.0f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f) }  // 7
-};
+// static Vertex g_Vertices[8] = {
+//     { XMFLOAT3(.0f, .0f, .0f), XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f) }, // 0
+//     { XMFLOAT3(.0f, .0f, 1.0f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) }, // 1
+//     { XMFLOAT3(.0f, 1.0f, 1.0f), XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f) }, // 2
+//     { XMFLOAT3(.0f, 1.0f, .0f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) }, // 3
+//     { XMFLOAT3(1.0f, .0f, .0f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) }, // 4
+//     { XMFLOAT3(1.0f, .0f, 1.0f), XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f) }, // 5
+//     { XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) }, // 6
+//     { XMFLOAT3(1.0f, 1.0f, .0f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f) }  // 7
+// };
 
-static WORD g_Indicies[36] =
-{
-    0, 1, 2, 0, 2, 3,
-    4, 6, 5, 4, 7, 6,
-    4, 5, 1, 4, 1, 0,
-    3, 2, 6, 3, 6, 7,
-    1, 5, 6, 1, 6, 2,
-    4, 0, 3, 4, 3, 7
-};
+// static WORD g_Indicies[36] =
+// {
+//     0,1,2,0,2,3,
+//     7,6,5,7,5,4,
+//     0,4,5,0,5,1,
+//     1,5,6,1,6,2,
+//     2,6,7,2,7,3,
+//     3,7,4,3,4,0
+// };
 
 void DXWindow::UpdateBufferResource(
     ComPtr<ID3D12GraphicsCommandList> commandList,
@@ -236,23 +236,35 @@ void DXWindow::LoadAssets()
 
     // 4.
     {
+        // m_model = std::make_shared<Model>(L"box.ply");
+        m_model = std::make_shared<Model>(L"bun_zipper.ply");
+        
+        auto vertices = m_model->GetVertices();
+        auto numVertices = m_model->GetVerticesNum();
+        auto indicies = m_model->GetIndicies();
+        auto numIndicies = m_model->GetIndiciesNum();
+
         // Upload vertex buffer data.
         UpdateBufferResource(commandList, &m_VertexBuffer, &intermediateVertexBuffer,
-            _countof(g_Vertices), sizeof(Vertex), g_Vertices);
+            numVertices, sizeof(Vertex), vertices);
 
         // Create the vertex buffer view.
         m_VertexBufferView.BufferLocation = m_VertexBuffer->GetGPUVirtualAddress();
-        m_VertexBufferView.SizeInBytes = sizeof(g_Vertices);
+        m_VertexBufferView.SizeInBytes = numVertices * sizeof(Vertex);
         m_VertexBufferView.StrideInBytes = sizeof(Vertex);
+
+        commandList->IASetVertexBuffers(0, 1, &m_VertexBufferView);
 
         // Upload index buffer data.
         UpdateBufferResource(commandList, &m_IndexBuffer, &intermediateIndexBuffer,
-            _countof(g_Indicies), sizeof(WORD), g_Indicies);
+            numIndicies, sizeof(uint32_t), indicies);
 
         // Create index buffer view.
         m_IndexBufferView.BufferLocation = m_IndexBuffer->GetGPUVirtualAddress();
-        m_IndexBufferView.Format = DXGI_FORMAT_R16_UINT;
-        m_IndexBufferView.SizeInBytes = sizeof(g_Indicies);
+        m_IndexBufferView.Format = DXGI_FORMAT_R32_UINT;
+        m_IndexBufferView.SizeInBytes = numIndicies * sizeof(uint32_t);
+
+        commandList->IASetIndexBuffer(&m_IndexBufferView);
     }
 
     m_commandQueue->ExecuteCommandList(commandList);
@@ -276,6 +288,18 @@ void DXWindow::Init(HWND hWnd)
 void DXWindow::Destroy()
 {
     m_commandQueue->Destory();
+    m_device->Release();
+
+    m_swapChain.reset();
+    m_commandQueue.reset();
+    m_RTVHeap.reset();
+    m_DSVHeap.reset();
+
+    m_RootSignature->Release();
+    m_PipelineState->Release();
+    m_VertexBuffer->Release();
+    m_IndexBuffer->Release();
+    m_DepthBuffer->Release();
 }
 
 HWND DXWindow::GetHandler() const
@@ -339,8 +363,12 @@ void DXWindow::Update()
 
     // Update the model matrix.
     float angle = static_cast<float>(totalTime * 90.0);
-    const XMVECTOR rotationAxis = XMVectorSet(-1, 1, 0, 0);
-    m_ModelMatrix = XMMatrixRotationAxis(rotationAxis, XMConvertToRadians(angle));
+    const XMVECTOR rotationAxis = XMVectorSet(0, 1, 0, 0);
+    auto scale = XMMatrixScaling(30.f, 30.f, 30.f);
+    auto rotation = XMMatrixRotationAxis(rotationAxis, XMConvertToRadians(angle));
+    auto translation = XMMatrixTranslation(0.f, -3.f, 0.f);
+    
+    m_ModelMatrix = XMMatrixMultiply(XMMatrixMultiply(scale, rotation), translation);
 
     // Update the view matrix.
     const XMVECTOR eyePosition = XMVectorSet(0, 0, -10, 1);
@@ -376,7 +404,7 @@ void DXWindow::Render()
     mvpMatrix = XMMatrixMultiply(mvpMatrix, m_ProjectionMatrix);
     commandList->SetGraphicsRoot32BitConstants(0, sizeof(XMMATRIX) / 4, &mvpMatrix, 0);
 
-    commandList->DrawIndexedInstanced(_countof(g_Indicies), 1, 0, 0, 0);
+    commandList->DrawIndexedInstanced(m_model->GetIndiciesNum(), 1, 0, 0, 0);
 
     m_swapChain->Present(commandList);
 }

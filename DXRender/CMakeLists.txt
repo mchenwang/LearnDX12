@@ -13,6 +13,7 @@ set(SOURCES
     src/CommandQueue.cpp
     src/DescriptorHeap.cpp
     src/Application.cpp
+    src/Model.cpp
     src/main.cpp
 )
 
@@ -40,6 +41,7 @@ add_executable(${PROJECT_NAME} WIN32 ${SOURCES})
 target_include_directories(${PROJECT_NAME}
     PRIVATE 
         ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/tool
         ${PROJECT_BINARY_DIR}/config
 )
 # DX12 libraries

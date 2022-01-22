@@ -5,20 +5,23 @@
 #include "SwapChain.h"
 #include "CommandQueue.h"
 #include "DescriptorHeap.h"
+#include "Model.h"
 
 using namespace DirectX;
 
 
-struct Vertex
-{
-    XMFLOAT3 position;
-    XMFLOAT4 color;
-};
+// struct Vertex
+// {
+//     XMFLOAT3 position;
+//     XMFLOAT4 color;
+// };
 
 class DXWindow
 {
     const wchar_t* m_Name;
     std::wstring m_AssetsPath;
+
+    std::shared_ptr<Model> m_model;
 
     // Use WARP adapter
     bool m_UseWarp = false;
