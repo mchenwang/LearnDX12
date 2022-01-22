@@ -14,6 +14,12 @@
 
 ![](./HelloDX12/HelloDX12.png)
 
-### box
+### DXRender
+
+tags:
+
+1. triangle
+2. box
+3. bunny model
 
 ![](./DXRender/image.png)
