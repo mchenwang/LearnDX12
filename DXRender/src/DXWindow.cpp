@@ -180,26 +180,11 @@ void DXWindow::LoadAssets()
 
         D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
         {
-            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            // { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
         };
 
-        // Describe and create the graphics pipeline state object (PSO).
-        // D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-        // psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
-        // psoDesc.pRootSignature = m_RootSignature.Get();
-        // psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
-        // psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
-        // psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-        // psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-        // psoDesc.DepthStencilState.DepthEnable = FALSE;
-        // psoDesc.DepthStencilState.StencilEnable = FALSE;
-        // psoDesc.SampleMask = UINT_MAX;
-        // psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        // psoDesc.NumRenderTargets = 1;
-        // psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-        // psoDesc.SampleDesc.Count = 1;
-        // ThrowIfFailed(m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_PipelineState)));
         struct PipelineStateStream
         {
             CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE pRootSignature;

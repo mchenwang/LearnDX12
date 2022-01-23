@@ -24,6 +24,8 @@ Model::Model(std::wstring model_name) noexcept
     happly::PLYData plyIn(to_byte_string(Model::GetModelFullPath(model_name)));
     SetVertices(plyIn.getVertexPositions());
     SetIndicies(plyIn.getFaceIndices<uint32_t>());
+
+    CalculateVertexNormal();
 }
 
 Model::~Model()
@@ -33,16 +35,7 @@ Model::~Model()
     m_vertices = nullptr;
     m_indicies = nullptr;
 }
-static Vertex g_Vertices[8] = {
-    { XMFLOAT3(.0f, .0f, .0f), XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f) }, // 0
-    { XMFLOAT3(.0f, .0f, 1.0f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) }, // 1
-    { XMFLOAT3(.0f, 1.0f, 1.0f), XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f) }, // 2
-    { XMFLOAT3(.0f, 1.0f, .0f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) }, // 3
-    { XMFLOAT3(1.0f, .0f, .0f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) }, // 4
-    { XMFLOAT3(1.0f, .0f, 1.0f), XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f) }, // 5
-    { XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) }, // 6
-    { XMFLOAT3(1.0f, 1.0f, .0f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f) }  // 7
-};
+
 void Model::SetVertices(std::vector<std::array<double, 3>>& positions)
 {
     if (m_vertices)
@@ -56,8 +49,9 @@ void Model::SetVertices(std::vector<std::array<double, 3>>& positions)
     for (int i = 0; i < m_numVertices; ++i)
     {
         m_vertices[i] = Vertex{
-            XMFLOAT3(positions[i][0], positions[i][1], positions[i][2]),
-            g_Vertices[(i%8)].color
+            XMFLOAT3(positions[i][0], positions[i][1], positions[i][2]), // position
+            XMFLOAT3(0.f, 0.f, 0.f),                                     // normal
+            // XMFLOAT4(1.f, 1.f, 1.f, 1.f),                                // color
         };
     }
 }
@@ -105,6 +99,52 @@ void Model::SetIndicies(std::vector<std::vector<uint32_t>>& faces)
     for (int i = 0; i < m_numIndicies; ++i) 
     {
         m_indicies[i] = indicies[i];
+    }
+}
+
+static DirectX::XMVECTOR operator-(const DirectX::XMFLOAT3& A, const DirectX::XMFLOAT3& B)
+{
+    return DirectX::XMVectorSet(A.x - B.x, A.y - B.y, A.z - B.z, 0.f);
+}
+// static inline DirectX::XMVECTOR DXCross(const DirectX::XMVECTOR& v1, const DirectX::XMVECTOR& v2)
+// {
+//     auto XMV1 = XMLoadFloat3(&v1);
+//     auto XMV2 = XMLoadFloat3(&v2);
+//     auto XMRet = XMVector3Cross(XMV1, XMV2);
+//     DirectX::XMFLOAT3 ret;
+//     XMStoreFloat3(&ret, XMRet);
+//     return ret; 
+// }
+static DirectX::XMFLOAT3 operator+=(DirectX::XMFLOAT3& a, const DirectX::XMFLOAT3& b)
+{
+    a.x += b.x;
+    a.y += b.y;
+    a.z += b.z;
+    return a;
+}
+
+void Model::CalculateVertexNormal()
+{
+    for (int i = 0; i + 2 < m_numIndicies; i += 3)
+    {
+        auto A = m_vertices[m_indicies[i    ]].position;
+        auto B = m_vertices[m_indicies[i + 1]].position;
+        auto C = m_vertices[m_indicies[i + 2]].position;
+        auto AB = B - A;
+        auto AC = C - A;
+
+        DirectX::XMFLOAT3 normal;
+        XMStoreFloat3(&normal, XMVector3Cross(AB, AC));
+
+        m_vertices[m_indicies[i    ]].normal += normal;
+        m_vertices[m_indicies[i + 1]].normal += normal;
+        m_vertices[m_indicies[i + 2]].normal += normal;
+    }
+
+    for (int i = 0; i < m_numVertices; ++i)
+    {
+        auto ret = XMVector3Normalize(XMLoadFloat3(&m_vertices[i].normal));
+        XMStoreFloat3(&m_vertices[i].normal, ret);
     }
 }
 

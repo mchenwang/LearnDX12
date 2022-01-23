@@ -10,7 +10,8 @@ using namespace DirectX;
 struct Vertex
 {
     XMFLOAT3 position;
-    XMFLOAT4 color;
+    XMFLOAT3 normal;
+    // XMFLOAT4 color;
 };
 
 class Model
@@ -23,6 +24,7 @@ private:
 
     void SetVertices(std::vector<std::array<double, 3>>&);
     void SetIndicies(std::vector<std::vector<uint32_t>>&);
+    void CalculateVertexNormal();
 
 public:
     static std::wstring GetModelFullPath(std::wstring model_name);

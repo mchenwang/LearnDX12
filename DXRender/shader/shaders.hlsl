@@ -4,10 +4,11 @@ struct ModelViewProjection
 };
 ConstantBuffer<ModelViewProjection> MVPCB : register(b0);
 
-// cbuffer ModelViewProjection
-// {
-//     float4x4
-// }
+struct VSInput
+{
+    float3 position : POSITION;
+    float3 normal : NORMAL;
+};
 
 struct PSInput
 {
@@ -15,13 +16,11 @@ struct PSInput
     float4 color : COLOR;
 };
 
-PSInput VSMain(float4 position : POSITION, float4 color : COLOR)
+PSInput VSMain(VSInput input)
 {
     PSInput o;
-
-    o.position = mul(MVPCB.MVP, position);
-    o.color = color;
-
+    o.position = mul(MVPCB.MVP, float4(input.position, 1.f));
+    o.color = float4(input.normal.xyz * 0.5 + 0.5, 1.0);
     return o;
 }
 
