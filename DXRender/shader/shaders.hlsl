@@ -19,7 +19,7 @@ struct PSInput
 PSInput VSMain(VSInput input)
 {
     PSInput o;
-    o.position = mul(MVPCB.MVP, float4(input.position, 1.f));
+    o.position = mul(float4(input.position, 1.f), MVPCB.MVP);
     o.color = float4(input.normal.xyz * 0.5 + 0.5, 1.0);
     return o;
 }

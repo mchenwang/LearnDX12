@@ -57,27 +57,6 @@ void DXWindow::LoadPipeline()
     m_swapChain->UpdateRenderTargetViews(m_RTVHeap);
 }
 
-// static Vertex g_Vertices[8] = {
-//     { XMFLOAT3(.0f, .0f, .0f), XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f) }, // 0
-//     { XMFLOAT3(.0f, .0f, 1.0f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) }, // 1
-//     { XMFLOAT3(.0f, 1.0f, 1.0f), XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f) }, // 2
-//     { XMFLOAT3(.0f, 1.0f, .0f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) }, // 3
-//     { XMFLOAT3(1.0f, .0f, .0f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) }, // 4
-//     { XMFLOAT3(1.0f, .0f, 1.0f), XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f) }, // 5
-//     { XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) }, // 6
-//     { XMFLOAT3(1.0f, 1.0f, .0f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f) }  // 7
-// };
-
-// static WORD g_Indicies[36] =
-// {
-//     0,1,2,0,2,3,
-//     7,6,5,7,5,4,
-//     0,4,5,0,5,1,
-//     1,5,6,1,6,2,
-//     2,6,7,2,7,3,
-//     3,7,4,3,4,0
-// };
-
 void DXWindow::UpdateBufferResource(
     ComPtr<ID3D12GraphicsCommandList> commandList,
     ID3D12Resource** pDestinationResource,
@@ -353,7 +332,9 @@ void DXWindow::Update()
     auto rotation = XMMatrixRotationAxis(rotationAxis, XMConvertToRadians(angle));
     auto translation = XMMatrixTranslation(0.f, -3.f, 0.f);
     
-    m_ModelMatrix = XMMatrixMultiply(XMMatrixMultiply(scale, rotation), translation);
+    // DXMath 里，变换是行向量左乘矩阵
+    // m_ModelMatrix = XMMatrixMultiply(XMMatrixMultiply(scale, rotation), translation); // C-style
+    m_ModelMatrix = scale * rotation * translation;
 
     // Update the view matrix.
     const XMVECTOR eyePosition = XMVectorSet(0, 0, -10, 1);
@@ -385,8 +366,11 @@ void DXWindow::Render()
     commandList->IASetIndexBuffer(&m_IndexBufferView);
 
     // Update the MVP matrix
-    XMMATRIX mvpMatrix = XMMatrixMultiply(m_ModelMatrix, m_ViewMatrix);
-    mvpMatrix = XMMatrixMultiply(mvpMatrix, m_ProjectionMatrix);
+    // XMMATRIX mvpMatrix = XMMatrixMultiply(m_ModelMatrix, m_ViewMatrix);
+    // mvpMatrix = XMMatrixMultiply(mvpMatrix, m_ProjectionMatrix); // C-style
+    // DXMath中矩阵是行主序，hlsl中是列主序，在C++层面做一层转置效率更高
+    XMMATRIX mvpMatrix = XMMatrixTranspose(m_ModelMatrix * m_ViewMatrix * m_ProjectionMatrix);
+
     commandList->SetGraphicsRoot32BitConstants(0, sizeof(XMMATRIX) / 4, &mvpMatrix, 0);
 
     commandList->DrawIndexedInstanced(m_model->GetIndiciesNum(), 1, 0, 0, 0);
