@@ -25,6 +25,7 @@ private:
     void SetVertices(std::vector<std::array<double, 3>>&);
     void SetIndicies(std::vector<std::vector<uint32_t>>&);
     void CalculateVertexNormal();
+    void Reconstruct(); // 将模型移动放缩到 [-1,1]^3 的空间内
 
 public:
     static std::wstring GetModelFullPath(std::wstring model_name);

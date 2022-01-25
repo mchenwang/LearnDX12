@@ -23,6 +23,7 @@ Model::Model(std::wstring model_name) noexcept
 
     happly::PLYData plyIn(to_byte_string(Model::GetModelFullPath(model_name)));
     SetVertices(plyIn.getVertexPositions());
+    Reconstruct();
     SetIndicies(plyIn.getFaceIndices<uint32_t>());
 
     CalculateVertexNormal();
@@ -34,6 +35,42 @@ Model::~Model()
     if (m_indicies) delete[] m_indicies;
     m_vertices = nullptr;
     m_indicies = nullptr;
+}
+
+void Model::Reconstruct()
+{
+    if (m_vertices == nullptr || m_numVertices == 0) return;
+
+    float maxX, minX, maxY, minY, maxZ, minZ;
+    maxX = minX = m_vertices[0].position.x;
+    maxY = minY = m_vertices[0].position.y;
+    maxZ = minZ = m_vertices[0].position.z;
+
+    for (int i = 1; i < m_numVertices; ++i)
+    {
+        if (m_vertices[i].position.x > maxX) maxX = m_vertices[i].position.x;
+        if (m_vertices[i].position.x < minX) minX = m_vertices[i].position.x;
+        if (m_vertices[i].position.y > maxY) maxY = m_vertices[i].position.y;
+        if (m_vertices[i].position.y < minY) minY = m_vertices[i].position.y;
+        if (m_vertices[i].position.z > maxZ) maxZ = m_vertices[i].position.z;
+        if (m_vertices[i].position.z < minZ) minZ = m_vertices[i].position.z;
+    }
+
+    float offsetX = (maxX + minX) / 2.;
+    float offsetY = (maxY + minY) / 2.;
+    float offsetZ = (maxZ + minZ) / 2.;
+
+    float rangeX = maxX - minX;
+    float rangeY = maxY - minY;
+    float rangeZ = maxZ - minZ;
+    float range = std::max(rangeX, std::max(rangeY, rangeZ)) / 2.;
+
+    for (int i = 0; i < m_numVertices; ++i)
+    {
+        m_vertices[i].position.x = (m_vertices[i].position.x - offsetX) / range;
+        m_vertices[i].position.y = (m_vertices[i].position.y - offsetY) / range;
+        m_vertices[i].position.z = (m_vertices[i].position.z - offsetZ) / range;
+    }
 }
 
 void Model::SetVertices(std::vector<std::array<double, 3>>& positions)
