@@ -96,6 +96,23 @@ void DXWindow::UpdateBufferResource(
             0, 0, 1, &subresourceData);
     }
 }
+struct MVPData
+{
+    XMMATRIX mvp;
+    XMMATRIX modelMatrixNegaTrans;
+    XMMATRIX modelMatrix;
+};
+MVPData g_MVPCB;
+struct PassData
+{
+    XMFLOAT4 lightPos = XMFLOAT4(-2.f, 2.f, 2.f, 1.f);
+    XMFLOAT4 eyePos = XMFLOAT4(0.f, 0.f, 5.f, 1.f);
+    XMFLOAT3 ambientColor = XMFLOAT3(0.5f, 0.5f, 0.5f);
+    float lightIntensity = 5.f;
+    XMFLOAT3 lightColor = XMFLOAT3(1.f, 1.f, 1.f);
+    float spotPower = 128.f;
+};
+PassData g_passData;
 
 void DXWindow::LoadAssets()
 {
@@ -112,13 +129,13 @@ void DXWindow::LoadAssets()
             D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
             D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
             D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
-            D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
-            D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+            D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
 
         // A single 32-bit constant root parameter that is used by the vertex shader.
-        CD3DX12_ROOT_PARAMETER1 rootParameters[1];
-        rootParameters[0].InitAsConstants(sizeof(XMMATRIX) / 4, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
-        
+        CD3DX12_ROOT_PARAMETER1 rootParameters[2];
+        rootParameters[0].InitAsConstants(sizeof(MVPData) / 4, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+        rootParameters[1].InitAsConstants(sizeof(PassData) / 4, 1, 0);
+
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
         rootSignatureDesc.Init_1_1(_countof(rootParameters), rootParameters, 0, nullptr, rootSignatureFlags);
         // rootSignatureDesc.Init(0, nullptr, 0, nullptr, rootSignatureFlags);
@@ -210,7 +227,7 @@ void DXWindow::LoadAssets()
 
         // Upload vertex buffer data.
         UpdateBufferResource(commandList, &m_VertexBuffer, &intermediateVertexBuffer,
-            numVertices, sizeof(Vertex), vertices);
+            numVertices, sizeof(Vertex), vertices.data());
 
         // Create the vertex buffer view.
         m_VertexBufferView.BufferLocation = m_VertexBuffer->GetGPUVirtualAddress();
@@ -221,7 +238,7 @@ void DXWindow::LoadAssets()
 
         // Upload index buffer data.
         UpdateBufferResource(commandList, &m_IndexBuffer, &intermediateIndexBuffer,
-            numIndicies, sizeof(uint32_t), indicies);
+            numIndicies, sizeof(uint32_t), indicies.data());
 
         // Create index buffer view.
         m_IndexBufferView.BufferLocation = m_IndexBuffer->GetGPUVirtualAddress();
@@ -327,24 +344,27 @@ void DXWindow::Update()
 
     // Update the model matrix.
     float angle = static_cast<float>(totalTime * 90.0);
+    // float angle = 0.f;
     const XMVECTOR rotationAxis = XMVectorSet(0, 1, 0, 0);
-    auto scale = XMMatrixScaling(30.f, 30.f, 30.f);
+    // auto scale = XMMatrixScaling(30.f, 30.f, 30.f);
+    auto scale = XMMatrixScaling(1.f, 1.f, 1.f);
     auto rotation = XMMatrixRotationAxis(rotationAxis, XMConvertToRadians(angle));
-    auto translation = XMMatrixTranslation(0.f, -3.f, 0.f);
+    // auto translation = XMMatrixTranslation(0.f, -3.f, 0.f);
+    auto translation = XMMatrixTranslation(0.f, 0.f, 0.f);
     
     // DXMath 里，变换是行向量左乘矩阵
     // m_ModelMatrix = XMMatrixMultiply(XMMatrixMultiply(scale, rotation), translation); // C-style
     m_ModelMatrix = scale * rotation * translation;
 
     // Update the view matrix.
-    const XMVECTOR eyePosition = XMVectorSet(0, 0, -10, 1);
+    const XMVECTOR eyePosition = XMLoadFloat4(&g_passData.eyePos);
     const XMVECTOR focusPoint = XMVectorSet(0, 0, 0, 1);
     const XMVECTOR upDirection = XMVectorSet(0, 1, 0, 0);
     m_ViewMatrix = XMMatrixLookAtLH(eyePosition, focusPoint, upDirection);
 
     // Update the projection matrix.
     float aspectRatio = m_Width / static_cast<float>(m_Height);
-    m_ProjectionMatrix = XMMatrixPerspectiveFovLH(XMConvertToRadians(m_FoV), aspectRatio, 0.1f, 100.0f);
+    m_ProjectionMatrix = XMMatrixPerspectiveFovLH(XMConvertToRadians(m_FoV), aspectRatio, 0.01f, 100.0f);
 }
 
 void DXWindow::Render()
@@ -369,9 +389,14 @@ void DXWindow::Render()
     // XMMATRIX mvpMatrix = XMMatrixMultiply(m_ModelMatrix, m_ViewMatrix);
     // mvpMatrix = XMMatrixMultiply(mvpMatrix, m_ProjectionMatrix); // C-style
     // DXMath中矩阵是行主序，hlsl中是列主序，在C++层面做一层转置效率更高
-    XMMATRIX mvpMatrix = XMMatrixTranspose(m_ModelMatrix * m_ViewMatrix * m_ProjectionMatrix);
+    auto mvp = m_ModelMatrix * m_ViewMatrix * m_ProjectionMatrix;
+    g_MVPCB.mvp = XMMatrixTranspose(mvp);
+    // mvp.r[3] = XMVectorSet(0.f, 0.f, 0.f, 1.f);
+    g_MVPCB.modelMatrixNegaTrans = XMMatrixInverse(nullptr, m_ModelMatrix);
+    g_MVPCB.modelMatrix = XMMatrixTranspose(m_ModelMatrix);
 
-    commandList->SetGraphicsRoot32BitConstants(0, sizeof(XMMATRIX) / 4, &mvpMatrix, 0);
+    commandList->SetGraphicsRoot32BitConstants(0, sizeof(MVPData) / 4, &g_MVPCB, 0);
+    commandList->SetGraphicsRoot32BitConstants(1, sizeof(PassData) / 4, &g_passData, 0);
 
     commandList->DrawIndexedInstanced(m_model->GetIndiciesNum(), 1, 0, 0, 0);
 

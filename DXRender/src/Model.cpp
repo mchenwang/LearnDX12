@@ -18,35 +18,24 @@ std::wstring Model::GetModelFullPath(std::wstring model_name)
 
 Model::Model(std::wstring model_name) noexcept
 {
-    m_vertices = nullptr;
-    m_indicies = nullptr;
-
     happly::PLYData plyIn(to_byte_string(Model::GetModelFullPath(model_name)));
     SetVertices(plyIn.getVertexPositions());
-    Reconstruct();
     SetIndicies(plyIn.getFaceIndices<uint32_t>());
 
+    Reconstruct();
     CalculateVertexNormal();
 }
 
-Model::~Model()
+void Model::Reconstruct(bool addFloor)
 {
-    if (m_vertices) delete[] m_vertices;
-    if (m_indicies) delete[] m_indicies;
-    m_vertices = nullptr;
-    m_indicies = nullptr;
-}
-
-void Model::Reconstruct()
-{
-    if (m_vertices == nullptr || m_numVertices == 0) return;
+    if (m_vertices.size() == 0) return;
 
     float maxX, minX, maxY, minY, maxZ, minZ;
     maxX = minX = m_vertices[0].position.x;
     maxY = minY = m_vertices[0].position.y;
     maxZ = minZ = m_vertices[0].position.z;
 
-    for (int i = 1; i < m_numVertices; ++i)
+    for (int i = 1; i < m_vertices.size(); ++i)
     {
         if (m_vertices[i].position.x > maxX) maxX = m_vertices[i].position.x;
         if (m_vertices[i].position.x < minX) minX = m_vertices[i].position.x;
@@ -65,25 +54,33 @@ void Model::Reconstruct()
     float rangeZ = maxZ - minZ;
     float range = std::max(rangeX, std::max(rangeY, rangeZ)) / 2.;
 
-    for (int i = 0; i < m_numVertices; ++i)
+    for (int i = 0; i < m_vertices.size(); ++i)
     {
         m_vertices[i].position.x = (m_vertices[i].position.x - offsetX) / range;
         m_vertices[i].position.y = (m_vertices[i].position.y - offsetY) / range;
         m_vertices[i].position.z = (m_vertices[i].position.z - offsetZ) / range;
     }
+
+    if (addFloor)
+    {
+        minY = (minY - offsetY) / range;
+        m_vertices.push_back(Vertex{XMFLOAT3( 2.f, minY, -2.f), XMFLOAT3(0.f, 0.f, 0.f)});
+        auto indexA = m_vertices.size() - 1;
+        m_vertices.push_back(Vertex{XMFLOAT3( 2.f, minY,  2.f), XMFLOAT3(0.f, 0.f, 0.f)});
+        auto indexB = indexA + 1;
+        m_vertices.push_back(Vertex{XMFLOAT3(-2.f, minY,  2.f), XMFLOAT3(0.f, 0.f, 0.f)});
+        auto indexC = indexB + 1;
+        m_vertices.push_back(Vertex{XMFLOAT3(-2.f, minY, -2.f), XMFLOAT3(0.f, 0.f, 0.f)});
+        auto indexD = indexC + 1;
+        m_indicies.push_back(indexA); m_indicies.push_back(indexD); m_indicies.push_back(indexB);
+        m_indicies.push_back(indexB); m_indicies.push_back(indexD); m_indicies.push_back(indexC);
+    }
 }
 
 void Model::SetVertices(std::vector<std::array<double, 3>>& positions)
 {
-    if (m_vertices)
-    {
-        delete[] m_vertices;
-        m_vertices = nullptr;
-    }
-
-    m_numVertices = positions.size();
-    m_vertices = new Vertex[m_numVertices];
-    for (int i = 0; i < m_numVertices; ++i)
+    m_vertices.resize(positions.size());
+    for (int i = 0; i < m_vertices.size(); ++i)
     {
         m_vertices[i] = Vertex{
             XMFLOAT3(positions[i][0], positions[i][1], positions[i][2]), // position
@@ -125,18 +122,8 @@ void Model::SetIndicies(std::vector<std::vector<uint32_t>>& faces)
             indicies.push_back(tri[2]);
         }
     }
-
-    if (m_indicies)
-    {
-        delete[] m_indicies;
-        m_indicies = nullptr;
-    }
-    m_numIndicies = indicies.size();
-    m_indicies = new uint32_t[m_numIndicies];
-    for (int i = 0; i < m_numIndicies; ++i) 
-    {
-        m_indicies[i] = indicies[i];
-    }
+    
+    m_indicies.swap(indicies);
 }
 
 static DirectX::XMVECTOR operator-(const DirectX::XMFLOAT3& A, const DirectX::XMFLOAT3& B)
@@ -162,7 +149,7 @@ static DirectX::XMFLOAT3 operator+=(DirectX::XMFLOAT3& a, const DirectX::XMFLOAT
 
 void Model::CalculateVertexNormal()
 {
-    for (int i = 0; i + 2 < m_numIndicies; i += 3)
+    for (int i = 0; i + 2 < m_indicies.size(); i += 3)
     {
         auto A = m_vertices[m_indicies[i    ]].position;
         auto B = m_vertices[m_indicies[i + 1]].position;
@@ -178,26 +165,26 @@ void Model::CalculateVertexNormal()
         m_vertices[m_indicies[i + 2]].normal += normal;
     }
 
-    for (int i = 0; i < m_numVertices; ++i)
+    for (int i = 0; i < m_vertices.size(); ++i)
     {
         auto ret = XMVector3Normalize(XMLoadFloat3(&m_vertices[i].normal));
         XMStoreFloat3(&m_vertices[i].normal, ret);
     }
 }
 
-Vertex* Model::GetVertices() const
+std::vector<Vertex> Model::GetVertices() const
 {
     return m_vertices;
 }
-uint32_t* Model::GetIndicies() const
+std::vector<uint32_t> Model::GetIndicies() const
 {
     return m_indicies;
 }
 uint32_t Model::GetVerticesNum() const
 {
-    return m_numVertices;
+    return m_vertices.size();
 }
 uint32_t Model::GetIndiciesNum() const
 {
-    return m_numIndicies;
+    return m_indicies.size();
 }

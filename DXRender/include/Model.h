@@ -17,24 +17,22 @@ struct Vertex
 class Model
 {
 private:
-    Vertex* m_vertices = nullptr;
-    uint32_t* m_indicies = nullptr;
-    uint32_t m_numVertices = 0;
-    uint32_t m_numIndicies = 0;
+    std::vector<Vertex> m_vertices;
+    std::vector<uint32_t> m_indicies;
 
     void SetVertices(std::vector<std::array<double, 3>>&);
     void SetIndicies(std::vector<std::vector<uint32_t>>&);
     void CalculateVertexNormal();
-    void Reconstruct(); // 将模型移动放缩到 [-1,1]^3 的空间内
+    void Reconstruct(bool addFloor = true); // 将模型移动放缩到 [-1,1]^3 的空间内
 
 public:
     static std::wstring GetModelFullPath(std::wstring model_name);
 
     Model(std::wstring model_name) noexcept;
-    ~Model();
+    ~Model() = default;
 
-    Vertex* GetVertices() const;
-    uint32_t* GetIndicies() const;
+    std::vector<Vertex> GetVertices() const;
+    std::vector<uint32_t> GetIndicies() const;
     uint32_t GetVerticesNum() const;
     uint32_t GetIndiciesNum() const;
 };
