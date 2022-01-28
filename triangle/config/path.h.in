@@ -1,0 +1,8 @@
+#ifndef __PATH_H__
+#define __PATH_H__
+#include <cwctype>
+
+const wchar_t * const project_path = L"${CMAKE_SOURCE_DIR}";
+const wchar_t * const shader_path = L"${CMAKE_SOURCE_DIR}/shader/";
+
+#endif
