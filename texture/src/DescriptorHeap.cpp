@@ -14,12 +14,12 @@ DescriptorHeap::DescriptorHeap(ComPtr<ID3D12Device2> device, UINT num, D3D12_DES
     m_descriptorSize = device->GetDescriptorHandleIncrementSize(type);
 }
 
-CD3DX12_CPU_DESCRIPTOR_HANDLE DescriptorHeap::GetCPUDescriptorHandle(UINT index) const
+CD3DX12_CPU_DESCRIPTOR_HANDLE DescriptorHeap::GetCPUHeapStartPtr(UINT index) const
 {
     return CD3DX12_CPU_DESCRIPTOR_HANDLE(m_heap->GetCPUDescriptorHandleForHeapStart(), index, m_descriptorSize);
 }
 
-CD3DX12_GPU_DESCRIPTOR_HANDLE DescriptorHeap::GetGPUDescriptorHandle(UINT index) const
+CD3DX12_GPU_DESCRIPTOR_HANDLE DescriptorHeap::GetGPUHeapStartPtr(UINT index) const
 {
     return CD3DX12_GPU_DESCRIPTOR_HANDLE(m_heap->GetGPUDescriptorHandleForHeapStart(), index, m_descriptorSize);
 }

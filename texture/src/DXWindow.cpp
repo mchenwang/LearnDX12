@@ -486,7 +486,7 @@ void DXWindow::LoadAssets()
         D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc1 = {};
         cbvDesc1.BufferLocation = m_mvpUploadBuffer->GetGPUVirtualAddress();
         cbvDesc1.SizeInBytes = g_mvpSize;
-        m_device->CreateConstantBufferView(&cbvDesc1, m_CBVDescriptorHeap->GetCPUDescriptorHandle());
+        m_device->CreateConstantBufferView(&cbvDesc1, m_CBVDescriptorHeap->GetCPUHeapStartPtr());
 
         ThrowIfFailed(m_device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
@@ -501,7 +501,7 @@ void DXWindow::LoadAssets()
         D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc2 = {};
         cbvDesc2.BufferLocation = m_passDataUploadBuffer->GetGPUVirtualAddress();
         cbvDesc2.SizeInBytes = g_passDataSize;
-        m_device->CreateConstantBufferView(&cbvDesc2, m_CBVDescriptorHeap->GetCPUDescriptorHandle(1));
+        m_device->CreateConstantBufferView(&cbvDesc2, m_CBVDescriptorHeap->GetCPUHeapStartPtr(1));
     }
 
     // 2D texture
@@ -630,7 +630,7 @@ void DXWindow::LoadAssets()
         m_textureView.Format = textureDesc.Format;
         m_textureView.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         m_textureView.Texture2D.MipLevels = 1;
-        m_device->CreateShaderResourceView(m_texture.Get(), &m_textureView, m_SRVDescriptorHeap->GetCPUDescriptorHandle());
+        m_device->CreateShaderResourceView(m_texture.Get(), &m_textureView, m_SRVDescriptorHeap->GetCPUHeapStartPtr());
     }
     
     m_commandQueue->ExecuteCommandList(commandList);
@@ -758,8 +758,8 @@ void DXWindow::Render()
     commandList->RSSetViewports(1, &m_viewport);
     commandList->RSSetScissorRects(1, &m_scissorRect);
 
-    auto RTVHandle = m_RTVDescriptorHeap->GetCPUDescriptorHandle(m_swapChain->GetCurrentBackBufferIndex());
-    auto DSVHandle = m_DSVDescriptorHeap->GetCPUDescriptorHandle();
+    auto RTVHandle = m_RTVDescriptorHeap->GetCPUHeapStartPtr(m_swapChain->GetCurrentBackBufferIndex());
+    auto DSVHandle = m_DSVDescriptorHeap->GetCPUHeapStartPtr();
     m_swapChain->ClearRenderTarget(commandList, RTVHandle, DSVHandle);
     
     // Set obj
@@ -784,7 +784,7 @@ void DXWindow::Render()
     
     ID3D12DescriptorHeap* ppHeaps[] = { m_SRVDescriptorHeap->GetHeap().Get() };
     commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-    commandList->SetGraphicsRootDescriptorTable(0, m_SRVDescriptorHeap->GetGPUDescriptorHandle());
+    commandList->SetGraphicsRootDescriptorTable(0, m_SRVDescriptorHeap->GetGPUHeapStartPtr());
     
     memcpy(g_gpuMVPCB, &g_MVPCB, sizeof(g_MVPCB));
     memcpy(g_gpuPassData, &g_passData, sizeof(g_passData));
@@ -911,7 +911,7 @@ void DXWindow::ResizeDepthBuffer(uint32_t width, uint32_t height)
     dsv.Flags = D3D12_DSV_FLAG_NONE;
 
     m_device->CreateDepthStencilView(m_DepthBuffer.Get(), &dsv,
-        m_DSVDescriptorHeap->GetCPUDescriptorHandle());
+        m_DSVDescriptorHeap->GetCPUHeapStartPtr());
 }
 
 LRESULT DXWindow::OnWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)

@@ -16,8 +16,8 @@ protected:
         D3D12_DESCRIPTOR_HEAP_FLAGS flag);
 public:
     virtual D3D12_DESCRIPTOR_HEAP_TYPE GetType() const = 0;
-    CD3DX12_CPU_DESCRIPTOR_HANDLE GetCPUDescriptorHandle(UINT index = 0) const;
-    CD3DX12_GPU_DESCRIPTOR_HANDLE GetGPUDescriptorHandle(UINT index = 0) const;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE GetCPUHeapStartPtr(UINT index = 0) const;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE GetGPUHeapStartPtr(UINT index = 0) const;
     ComPtr<ID3D12DescriptorHeap> GetHeap() const;
 };
 
