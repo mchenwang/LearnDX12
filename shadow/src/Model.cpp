@@ -39,6 +39,14 @@ Model::Model(std::wstring model_name, ModelType type, bool reconstruct) noexcept
             XMStoreFloat3(&m_vertices[i].normal, ret);
         }
     }
+    
+    m_vertices.push_back(Vertex{XMFLOAT3( 2,-1,-2), XMFLOAT3(0,1,0), XMFLOAT2(0,0)});
+    m_vertices.push_back(Vertex{XMFLOAT3( 2,-1, 2), XMFLOAT3(0,1,0), XMFLOAT2(0,0)});
+    m_vertices.push_back(Vertex{XMFLOAT3(-2,-1, 2), XMFLOAT3(0,1,0), XMFLOAT2(0,0)});
+    m_vertices.push_back(Vertex{XMFLOAT3(-2,-1,-2), XMFLOAT3(0,1,0), XMFLOAT2(0,0)});
+    auto numVertices = m_vertices.size();
+    m_indicies.push_back(numVertices-4);m_indicies.push_back(numVertices-1);m_indicies.push_back(numVertices-3);
+    m_indicies.push_back(numVertices-3);m_indicies.push_back(numVertices-1);m_indicies.push_back(numVertices-2);
 }
 
 static DirectX::XMVECTOR operator-(const DirectX::XMFLOAT3& A, const DirectX::XMFLOAT3& B)

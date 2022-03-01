@@ -62,6 +62,19 @@ class DXWindow
     CD3DX12_VIEWPORT m_viewport;
     CD3DX12_RECT m_scissorRect;
 
+    // shadow map
+    ComPtr<ID3D12PipelineState> m_shadowPipelineState;
+    ComPtr<ID3D12PipelineState> m_shadowDebugPipelineState;
+    uint32_t m_shadowMapW;
+    uint32_t m_shadowMapH;
+    ComPtr<ID3D12Resource> m_shadowMap;
+    ComPtr<ID3D12Resource> m_debugRectVertexBuffer;
+    D3D12_VERTEX_BUFFER_VIEW m_debugRectVertexBufferView;
+    ComPtr<ID3D12Resource> m_debugRectIndexBuffer;
+    D3D12_INDEX_BUFFER_VIEW m_debugRectIndexBufferView;
+    
+    
+
     // By default, use windowed mode.
     // Can be toggled with the Alt+Enter or F11
     bool m_fullscreen = false;
@@ -85,6 +98,9 @@ class DXWindow
     void LoadAssets();
 
     void UpdateWindowRect(uint32_t width, uint32_t height);
+
+    void UpdateShadowPassData(ComPtr<ID3D12GraphicsCommandList2>& commandList);
+    void ShadowPass(ComPtr<ID3D12GraphicsCommandList2>& commandList);
 public:
     DXWindow(const wchar_t* name, uint32_t w = 1280, uint32_t h = 720) noexcept;
     ~DXWindow() = default;

@@ -16,7 +16,7 @@ DXWindow::DXWindow(const wchar_t* name, uint32_t w, uint32_t h) noexcept
     , m_scissorRect(0, 0, static_cast<LONG>(w), static_cast<LONG>(h))
 {
     m_assetsPath = project_path;
-    m_camera = std::make_shared<Camera>(static_cast<float>(w), static_cast<float>(h));
+    m_camera = std::make_shared<PerspectiveCamera>(static_cast<float>(w), static_cast<float>(h));
 }
 
 void DXWindow::ParseCommandLineArguments()
@@ -60,8 +60,8 @@ void DXWindow::LoadPipeline()
     m_commandQueue = std::make_shared<CommandQueue>(m_device, D3D12_COMMAND_LIST_TYPE_DIRECT);
     m_swapChain = std::make_shared<SwapChain>(m_device, m_width, m_height, m_hWnd, m_commandQueue);
     m_RTVDescriptorHeap = std::make_shared<RTVDescriptorHeap>(m_device, SwapChain::NUM_OF_FRAMES);
-    m_DSVDescriptorHeap = std::make_shared<DSVDescriptorHeap>(m_device, 1);
-    m_SRVDescriptorHeap = std::make_shared<SRVDescriptorHeap>(m_device, 1);
+    m_DSVDescriptorHeap = std::make_shared<DSVDescriptorHeap>(m_device, 2);
+    m_SRVDescriptorHeap = std::make_shared<SRVDescriptorHeap>(m_device, 2);
     m_CBVDescriptorHeap = std::make_shared<CBVDescriptorHeap>(m_device, 2);
     
     m_swapChain->UpdateRenderTargetViews(m_RTVDescriptorHeap);
@@ -118,10 +118,11 @@ BYTE* g_gpuMVPCB = nullptr;
 constexpr UINT g_mvpSize = GRS_UPPER(sizeof(MVPData), 256);
 struct PassData
 {
+    XMMATRIX lightVp;
     XMFLOAT4 lightPos = XMFLOAT4(-2.f, 2.f, 2.f, 1.f);
-    XMFLOAT4 eyePos = XMFLOAT4(0.f, 0.f, 5.f, 1.f);
+    XMFLOAT4 eyePos = XMFLOAT4(0.5f, 0.5f, 5.f, 1.f);
     XMFLOAT3 ambientColor = XMFLOAT3(0.5f, 0.5f, 0.5f);
-    float lightIntensity = 5.f;
+    float lightIntensity = 2.f;
     XMFLOAT3 lightColor = XMFLOAT3(1.f, 1.f, 1.f);
     float spotPower = 128.f;
 };
@@ -318,7 +319,7 @@ void DXWindow::LoadAssets()
             D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
         
         CD3DX12_DESCRIPTOR_RANGE1 ranges[1] = {};
-        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE);
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE);
         // TODO: sampler
 
         // A single 32-bit constant root parameter that is used by the vertex shader.
@@ -363,13 +364,13 @@ void DXWindow::LoadAssets()
 
         ThrowIfFailed(D3DCompileFromFile(
             GetShaderFullPath(L"shaders.hlsl").c_str(),
-            nullptr, nullptr, "VSMain", "vs_5_1",
+            nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "VSMain", "vs_5_1",
             compileFlags, 0, &vertexShader, nullptr
             )
         );
         ThrowIfFailed(D3DCompileFromFile(
             GetShaderFullPath(L"shaders.hlsl").c_str(),
-            nullptr, nullptr, "PSMain", "ps_5_1",
+            nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "PSMain", "ps_5_1",
             compileFlags, 0, &pixelShader, nullptr
             )
         );
@@ -410,7 +411,7 @@ void DXWindow::LoadAssets()
         ThrowIfFailed(m_device->CreatePipelineState(&pipelineStateStreamDesc, IID_PPV_ARGS(&m_PipelineState)));
     }
 
-    auto commandList = m_commandQueue->GetCommandList(m_PipelineState.Get());
+    auto commandList = m_commandQueue->GetCommandList(nullptr);
     
     ComPtr<ID3D12Resource> intermediateVertexBuffer;
     ComPtr<ID3D12Resource> intermediateIndexBuffer;
@@ -422,6 +423,7 @@ void DXWindow::LoadAssets()
         auto numVertices = m_model->GetVerticesNum();
         auto indicies = m_model->GetIndicies();
         auto numIndicies = m_model->GetIndiciesNum();
+
 
         // Upload vertex buffer data.
         UpdateBufferResource(commandList, &m_VertexBuffer, &intermediateVertexBuffer,
@@ -444,40 +446,10 @@ void DXWindow::LoadAssets()
 
     // constant upload buffer
     {
-        // CD3DX12_HEAP_DESC uploadHeapDesc = {};
-        // // 向上字节对齐 TODO
-        // uploadHeapDesc.SizeInBytes = (g_mvpSize + g_passDataSize + (D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT - 1)) & (~(D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT - 1));
-        // uploadHeapDesc.Alignment = 0;
-        // uploadHeapDesc.Properties.Type = D3D12_HEAP_TYPE_UPLOAD;
-        // uploadHeapDesc.Properties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-        // uploadHeapDesc.Properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-        // uploadHeapDesc.Flags = D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS;
-        // ThrowIfFailed(m_device->CreateHeap(&uploadHeapDesc, IID_PPV_ARGS(&m_mvpUploadBufferHeap)));
-        // D3D12_RESOURCE_DESC mvpDesc = {};
-        // mvpDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-        // mvpDesc.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
-        // mvpDesc.Width = g_mvpSize;
-        // mvpDesc.Height = 1;
-        // mvpDesc.DepthOrArraySize = 1;
-        // mvpDesc.MipLevels = 1;
-        // mvpDesc.Format = DXGI_FORMAT_UNKNOWN;
-        // mvpDesc.SampleDesc.Count = 1;
-        // mvpDesc.SampleDesc.Quality = 0;
-        // mvpDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-        // mvpDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-        // ThrowIfFailed(m_device->CreatePlacedResource(
-        //     m_mvpUploadBufferHeap.Get(),
-        //     0,
-        //     &mvpDesc,
-        //     D3D12_RESOURCE_STATE_GENERIC_READ,
-        //     nullptr,
-        //     IID_PPV_ARGS(&m_mvpUploadBuffer)
-        // ));
-
         ThrowIfFailed(m_device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
             D3D12_HEAP_FLAG_NONE,
-            &CD3DX12_RESOURCE_DESC::Buffer(g_mvpSize),
+            &CD3DX12_RESOURCE_DESC::Buffer(g_mvpSize*2),
             D3D12_RESOURCE_STATE_GENERIC_READ,
             nullptr,
             IID_PPV_ARGS(&m_mvpUploadBuffer)));
@@ -491,7 +463,7 @@ void DXWindow::LoadAssets()
         ThrowIfFailed(m_device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
             D3D12_HEAP_FLAG_NONE,
-            &CD3DX12_RESOURCE_DESC::Buffer(g_passDataSize),
+            &CD3DX12_RESOURCE_DESC::Buffer(g_passDataSize*2),
             D3D12_RESOURCE_STATE_GENERIC_READ,
             nullptr,
             IID_PPV_ARGS(&m_passDataUploadBuffer)
@@ -633,6 +605,219 @@ void DXWindow::LoadAssets()
         m_device->CreateShaderResourceView(m_texture.Get(), &m_textureView, m_SRVDescriptorHeap->GetCPUHeapStartPtr());
     }
     
+    // shadow map
+    {
+        // shadow map PSO
+        {
+            ComPtr<ID3DBlob> vertexShader;
+            ComPtr<ID3DBlob> pixelShader;
+
+#if defined(_DEBUG)
+            UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+            UINT compileFlags = 0;
+#endif
+
+            ThrowIfFailed(D3DCompileFromFile(
+                GetShaderFullPath(L"shadow.hlsl").c_str(),
+                nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "VSMain", "vs_5_1",
+                compileFlags, 0, &vertexShader, nullptr
+            ));
+            ThrowIfFailed(D3DCompileFromFile(
+                GetShaderFullPath(L"shadow.hlsl").c_str(),
+                nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "PSMain", "ps_5_1",
+                compileFlags, 0, &pixelShader, nullptr
+            ));
+            
+
+            D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
+            {
+                { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+                { "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+                { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+            };
+            
+            struct PipelineStateStream
+            {
+                CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE pRootSignature;
+                CD3DX12_PIPELINE_STATE_STREAM_INPUT_LAYOUT InputLayout;
+                CD3DX12_PIPELINE_STATE_STREAM_PRIMITIVE_TOPOLOGY PrimitiveTopologyType;
+                CD3DX12_PIPELINE_STATE_STREAM_VS VS;
+                CD3DX12_PIPELINE_STATE_STREAM_PS PS;
+                CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL_FORMAT DSVFormat;
+                CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
+                CD3DX12_PIPELINE_STATE_STREAM_RASTERIZER Rasterizer;
+            };
+
+            D3D12_RT_FORMAT_ARRAY rtvFormats = {};
+            
+            PipelineStateStream shadowPipelineStateStream;
+            shadowPipelineStateStream.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+            rtvFormats.NumRenderTargets = 0;
+            rtvFormats.RTFormats[0] = DXGI_FORMAT_UNKNOWN;
+            shadowPipelineStateStream.RTVFormats = rtvFormats;
+            shadowPipelineStateStream.pRootSignature = m_RootSignature.Get();
+            shadowPipelineStateStream.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
+            shadowPipelineStateStream.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+            shadowPipelineStateStream.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
+            shadowPipelineStateStream.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
+            CD3DX12_RASTERIZER_DESC rasterizerDesc(D3D12_DEFAULT);
+            rasterizerDesc.DepthBias = 0;
+            rasterizerDesc.DepthBiasClamp = 0;
+            rasterizerDesc.SlopeScaledDepthBias = 1.f;
+            shadowPipelineStateStream.Rasterizer = CD3DX12_PIPELINE_STATE_STREAM_RASTERIZER(rasterizerDesc);
+
+            D3D12_PIPELINE_STATE_STREAM_DESC shadowPipelineStateStreamDesc = {};
+            shadowPipelineStateStreamDesc.pPipelineStateSubobjectStream = &shadowPipelineStateStream;
+            shadowPipelineStateStreamDesc.SizeInBytes = sizeof(PipelineStateStream);
+            ThrowIfFailed(m_device->CreatePipelineState(&shadowPipelineStateStreamDesc, IID_PPV_ARGS(&m_shadowPipelineState)));
+        }
+
+        // shadow map resource
+        {
+            m_shadowMapH = 2048;
+            m_shadowMapW = 2048;
+
+            // CD3DX12_RESOURCE_DESC resourceDesc = {};
+            // resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+            // resourceDesc.Alignment = 0;
+            // resourceDesc.Width = m_shadowMapW;
+            // resourceDesc.Height = m_shadowMapH;
+            // resourceDesc.DepthOrArraySize = 1;
+            // resourceDesc.MipLevels = 1;
+            // resourceDesc.Format = DXGI_FORMAT_D32_FLOAT;
+            // resourceDesc.SampleDesc.Count = 1;
+            // resourceDesc.SampleDesc.Quality = 0;
+            // resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+            // resourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+            CD3DX12_CLEAR_VALUE optClear(DXGI_FORMAT_D32_FLOAT, 1.0, 0);
+
+            ThrowIfFailed(m_device->CreateCommittedResource(
+                &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+                D3D12_HEAP_FLAG_NONE,
+                &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D32_FLOAT, m_shadowMapW, m_shadowMapH,
+                    1, 0, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL),
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                &optClear,
+                IID_PPV_ARGS(&m_shadowMap)
+            ));
+        }
+        // shadow map dsv/srv
+        {
+            D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+            dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
+            dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+            dsvDesc.Texture2D.MipSlice = 0;
+            dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+            m_device->CreateDepthStencilView(m_shadowMap.Get(), &dsvDesc, m_DSVDescriptorHeap->GetCPUHeapStartPtr(1));
+
+            D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+            srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            srvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            srvDesc.Texture2D.MipLevels = 1;
+            srvDesc.Texture2D.MostDetailedMip = 0;
+            srvDesc.Texture2D.PlaneSlice = 0;
+            srvDesc.Texture2D.ResourceMinLODClamp = 0;
+            m_device->CreateShaderResourceView(m_shadowMap.Get(), &srvDesc, m_SRVDescriptorHeap->GetCPUHeapStartPtr(1));
+        }
+
+    }
+
+    ComPtr<ID3D12Resource> debugIntermediateVertexBuffer;
+    ComPtr<ID3D12Resource> debugIntermediateIndexBuffer;
+    // shadow debug
+    {
+        // PSO
+        {
+            ComPtr<ID3DBlob> vertexShader;
+            ComPtr<ID3DBlob> pixelShader;
+
+#if defined(_DEBUG)
+            UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+            UINT compileFlags = 0;
+#endif
+
+            ThrowIfFailed(D3DCompileFromFile(
+                GetShaderFullPath(L"shadowDebug.hlsl").c_str(),
+                nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "VSMain", "vs_5_1",
+                compileFlags, 0, &vertexShader, nullptr
+            ));
+            ThrowIfFailed(D3DCompileFromFile(
+                GetShaderFullPath(L"shadowDebug.hlsl").c_str(),
+                nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "PSMain", "ps_5_1",
+                compileFlags, 0, &pixelShader, nullptr
+            ));
+            
+
+            D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
+            {
+                { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+                { "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+                { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+            };
+            
+            struct PipelineStateStream
+            {
+                CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE pRootSignature;
+                CD3DX12_PIPELINE_STATE_STREAM_INPUT_LAYOUT InputLayout;
+                CD3DX12_PIPELINE_STATE_STREAM_PRIMITIVE_TOPOLOGY PrimitiveTopologyType;
+                CD3DX12_PIPELINE_STATE_STREAM_VS VS;
+                CD3DX12_PIPELINE_STATE_STREAM_PS PS;
+                CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL_FORMAT DSVFormat;
+                CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
+            };
+
+            D3D12_RT_FORMAT_ARRAY rtvFormats = {};
+            
+            PipelineStateStream debugPSO;
+            debugPSO.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+            rtvFormats.NumRenderTargets = 1;
+            rtvFormats.RTFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+            debugPSO.RTVFormats = rtvFormats;
+            debugPSO.pRootSignature = m_RootSignature.Get();
+            debugPSO.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
+            debugPSO.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+            debugPSO.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
+            debugPSO.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
+
+            D3D12_PIPELINE_STATE_STREAM_DESC debugPSOStreamDesc = {};
+            debugPSOStreamDesc.pPipelineStateSubobjectStream = &debugPSO;
+            debugPSOStreamDesc.SizeInBytes = sizeof(PipelineStateStream);
+            ThrowIfFailed(m_device->CreatePipelineState(&debugPSOStreamDesc, IID_PPV_ARGS(&m_shadowDebugPipelineState)));
+        }
+        
+        {
+            Vertex vertices[] = {
+                Vertex{XMFLOAT3(0.5, -0.9, 0), XMFLOAT3(0, 0, 1), XMFLOAT2(0, 1)},
+                Vertex{XMFLOAT3(0.5, -0.5, 0), XMFLOAT3(0, 0, 1), XMFLOAT2(0, 0)},
+                Vertex{XMFLOAT3(0.9, -0.5, 0), XMFLOAT3(0, 0, 1), XMFLOAT2(1, 0)},
+                Vertex{XMFLOAT3(0.9, -0.9, 0), XMFLOAT3(0, 0, 1), XMFLOAT2(1, 1)}
+            };
+
+            uint32_t indicies[] = { 0, 1, 2,  0, 2, 3};
+            // uint32_t indicies[] = { 0, 2, 1,  0, 3, 2};
+            
+            UpdateBufferResource(commandList, &m_debugRectVertexBuffer, &debugIntermediateVertexBuffer,
+                _countof(vertices), sizeof(Vertex), vertices);
+
+            // Create the vertex buffer view.
+            m_debugRectVertexBufferView.BufferLocation = m_debugRectVertexBuffer->GetGPUVirtualAddress();
+            m_debugRectVertexBufferView.SizeInBytes = _countof(vertices) * sizeof(Vertex);
+            m_debugRectVertexBufferView.StrideInBytes = sizeof(Vertex);
+
+            // Upload index buffer data.
+            UpdateBufferResource(commandList, &m_debugRectIndexBuffer, &debugIntermediateIndexBuffer,
+                _countof(indicies), sizeof(uint32_t), indicies);
+
+            // Create index buffer view.
+            m_debugRectIndexBufferView.BufferLocation = m_debugRectIndexBuffer->GetGPUVirtualAddress();
+            m_debugRectIndexBufferView.Format = DXGI_FORMAT_R32_UINT;
+            m_debugRectIndexBufferView.SizeInBytes = _countof(indicies) * sizeof(uint32_t);
+        }
+    }
     m_commandQueue->ExecuteCommandList(commandList);
 
     ResizeDepthBuffer(m_width, m_height);
@@ -671,8 +856,18 @@ void DXWindow::Destroy()
 
     m_texture->Release();
 
+    m_mvpUploadBuffer->Unmap(0, nullptr);
+    m_passDataUploadBuffer->Unmap(0, nullptr);
     m_mvpUploadBuffer->Release();
     m_passDataUploadBuffer->Release();
+
+    m_shadowPipelineState->Release();
+    m_shadowDebugPipelineState->Release();
+
+    m_shadowMap->Release();
+
+    m_debugRectVertexBuffer->Release();
+    m_debugRectIndexBuffer->Release();
 }
 
 HWND DXWindow::GetHandler() const
@@ -735,8 +930,8 @@ void DXWindow::Update()
     }
 
     // Update the model matrix.
-    float angle = static_cast<float>(totalTime * 90.0);
-    // float angle = 0.f;
+    // float angle = static_cast<float>(totalTime * 90.0);
+    float angle = 0.f;
     const XMVECTOR rotationAxis = XMVectorSet(0, 1, 0, 0);
     // auto scale = XMMatrixScaling(30.f, 30.f, 30.f);
     auto scale = XMMatrixScaling(1.f, 1.f, 1.f);
@@ -747,25 +942,6 @@ void DXWindow::Update()
     // DXMath 里，变换是行向量左乘矩阵
     // m_ModelMatrix = XMMatrixMultiply(XMMatrixMultiply(scale, rotation), translation); // C-style
     m_ModelMatrix = scale * rotation * translation;
-}
-
-void DXWindow::Render()
-{
-    auto commandList = m_commandQueue->GetCommandList(m_PipelineState.Get());
-    
-    // Set necessary state.
-    commandList->SetGraphicsRootSignature(m_RootSignature.Get());
-    commandList->RSSetViewports(1, &m_viewport);
-    commandList->RSSetScissorRects(1, &m_scissorRect);
-
-    auto RTVHandle = m_RTVDescriptorHeap->GetCPUHeapStartPtr(m_swapChain->GetCurrentBackBufferIndex());
-    auto DSVHandle = m_DSVDescriptorHeap->GetCPUHeapStartPtr();
-    m_swapChain->ClearRenderTarget(commandList, RTVHandle, DSVHandle);
-    
-    // Set obj
-    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    commandList->IASetVertexBuffers(0, 1, &m_VertexBufferView);
-    commandList->IASetIndexBuffer(&m_IndexBufferView);
 
     // Update the MVP matrix
     // XMMATRIX mvpMatrix = XMMatrixMultiply(m_ModelMatrix, m_ViewMatrix);
@@ -777,22 +953,150 @@ void DXWindow::Render()
     g_MVPCB.modelMatrixNegaTrans = XMMatrixInverse(nullptr, m_ModelMatrix);
     g_MVPCB.modelMatrix = XMMatrixTranspose(m_ModelMatrix);
 
-    // commandList->SetGraphicsRoot
-    // commandList->SetGraphicsRoot32BitConstants(0, sizeof(MVPData) / 4, &g_MVPCB, 0);
     g_passData.eyePos = m_camera->GetPosition();
-    // commandList->SetGraphicsRoot32BitConstants(1, sizeof(PassData) / 4, &g_passData, 0);
+    angle = static_cast<float>(totalTime);
+    g_passData.lightPos = XMFLOAT4(-3.f * std::sin(angle), 3.f, 3.f * std::cos(angle), 1.f);
+    // g_passData.lightPos = XMFLOAT4(5.f, 2.f, 0.f, 1.f);
+    // g_passData.lightPos = XMFLOAT4(0.f, 0.f, -2.f, 1.f);
+}
+
+inline XMMATRIX ShadowData()
+{
+    // 主光才投射物体阴影
+	// XMVECTOR lightDir = XMLoadFloat3(&mRotatedLightDir[0]);
+	XMVECTOR lightPos = XMLoadFloat4(&g_passData.lightPos);
+	XMVECTOR targetPos = XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f);
+	XMVECTOR lightUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+	// WorldToLight矩阵 （世界空间转灯光空间）
+	XMMATRIX lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
+
+	// XMStoreFloat3(&mLightPosW, lightPos);//灯光坐标
+
+	// 将包围球变换到光源空间
+	XMFLOAT3 sphereCenterLS;
+	XMStoreFloat3(&sphereCenterLS, XMVector3TransformCoord(targetPos, lightView));
+
+	// 位于光源空间中包围场景的正交投影视景体
+	float l = sphereCenterLS.x - 3;//左端点
+	float b = sphereCenterLS.y - 3;//下端点
+	float n = sphereCenterLS.z - 3;//近端点
+	float r = sphereCenterLS.x + 3;//右端点
+	float t = sphereCenterLS.y + 3;//上端点
+	float f = sphereCenterLS.z + 3;//远端点
+
+	//构建LightToProject矩阵（灯光空间转NDC空间）
+	XMMATRIX lightProj = XMMatrixOrthographicOffCenterLH(l, r, b, t, n, f);
+
+	// 构建NDCToTexture矩阵（NDC空间转纹理空间）
+	// 从[-1, 1]转到[0, 1]
+	XMMATRIX T(
+		0.5f, 0.0f, 0.0f, 0.0f,
+		0.0f,-0.5f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f,
+		0.5f, 0.5f, 0.0f, 1.0f);
+
+	// 构建LightToTexture（灯光空间转纹理空间）
+	XMMATRIX S = lightView * lightProj;
+    g_passData.lightVp = XMMatrixTranspose(S * T);
+	// XMStoreFloat4x4(&mLightView, lightView);
+	// XMStoreFloat4x4(&mLightProj, lightProj);
+	// XMStoreFloat4x4(&mShadowTransform, S);
+    return S;
+}
+
+inline void DXWindow::UpdateShadowPassData(ComPtr<ID3D12GraphicsCommandList2>& commandList)
+{
+    // TODO: 现在是平行光照，从pos照向原点
+    Camera* lightView = new OrthographicCamera(m_shadowMapW, m_shadowMapH, 0.1f, 100.f, g_passData.lightPos);
+    MVPData lightMVP;
+    auto mvp = ShadowData();
+    // auto mvp = lightView->GetViewMatrix() * lightView->GetProjectionMatrix();
+    lightMVP.mvp = XMMatrixTranspose(mvp);
+    lightMVP.modelMatrixNegaTrans = XMMatrixInverse(nullptr, m_ModelMatrix);
+    lightMVP.modelMatrix = XMMatrixTranspose(m_ModelMatrix);
+
+    BYTE* gpuMVPCB = g_gpuMVPCB + g_mvpSize;
+    BYTE* gpuPassData = g_gpuPassData + g_passDataSize;
+    memcpy(gpuMVPCB, &lightMVP, sizeof(lightMVP));
+    memcpy(gpuPassData, &g_passData, sizeof(g_passData));
+
+    commandList->SetGraphicsRootConstantBufferView(1, m_mvpUploadBuffer->GetGPUVirtualAddress() + g_mvpSize);
+    commandList->SetGraphicsRootConstantBufferView(2, m_passDataUploadBuffer->GetGPUVirtualAddress() + g_passDataSize);
     
+    delete lightView;
+}
+
+void DXWindow::ShadowPass(ComPtr<ID3D12GraphicsCommandList2>& commandList)
+{
+    commandList->SetPipelineState(m_shadowPipelineState.Get());
+    auto viewport = CD3DX12_VIEWPORT(0.f, 0, m_shadowMapW, m_shadowMapH);
+    auto scissorRect = CD3DX12_RECT(0, 0, m_shadowMapW, m_shadowMapH);
+    commandList->RSSetViewports(1, &viewport);
+    commandList->RSSetScissorRects(1, &scissorRect);
+
+    UpdateShadowPassData(commandList);
+
+    commandList->ResourceBarrier(1,
+        &CD3DX12_RESOURCE_BARRIER::Transition(m_shadowMap.Get(),
+            D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_DEPTH_WRITE));
+    commandList->ClearDepthStencilView(m_DSVDescriptorHeap->GetCPUHeapStartPtr(1),
+        D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+    commandList->OMSetRenderTargets(0, nullptr, FALSE, &m_DSVDescriptorHeap->GetCPUHeapStartPtr(1));
+    
+    // Set obj
+    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    commandList->IASetVertexBuffers(0, 1, &m_VertexBufferView);
+    commandList->IASetIndexBuffer(&m_IndexBufferView);
+    commandList->DrawIndexedInstanced(m_model->GetIndiciesNum(), 1, 0, 0, 0);
+
+    commandList->ResourceBarrier(1,
+        &CD3DX12_RESOURCE_BARRIER::Transition(m_shadowMap.Get(),
+            D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ));
+}
+
+void DXWindow::Render()
+{
+    auto commandList = m_commandQueue->GetCommandList(nullptr);
+    
+    // Set necessary state.
+    commandList->SetGraphicsRootSignature(m_RootSignature.Get());
+
     ID3D12DescriptorHeap* ppHeaps[] = { m_SRVDescriptorHeap->GetHeap().Get() };
     commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-    commandList->SetGraphicsRootDescriptorTable(0, m_SRVDescriptorHeap->GetGPUHeapStartPtr());
+
+    //commandList->SetGraphicsRootDescriptorTable(0, m_SRVDescriptorHeap->GetGPUHeapStartPtr(0));
     
+    ShadowPass(commandList);
+    commandList->SetGraphicsRootDescriptorTable(0, m_SRVDescriptorHeap->GetGPUHeapStartPtr(0));
+
+    commandList->SetPipelineState(m_PipelineState.Get());
+    commandList->RSSetViewports(1, &m_viewport);
+    commandList->RSSetScissorRects(1, &m_scissorRect);
+
+    //commandList->SetGraphicsRootDescriptorTable(0, m_SRVDescriptorHeap->GetGPUHeapStartPtr(0));
+
+    auto RTVHandle = m_RTVDescriptorHeap->GetCPUHeapStartPtr(m_swapChain->GetCurrentBackBufferIndex());
+    auto DSVHandle = m_DSVDescriptorHeap->GetCPUHeapStartPtr();
+    m_swapChain->ClearRenderTarget(commandList, RTVHandle, DSVHandle);
+
     memcpy(g_gpuMVPCB, &g_MVPCB, sizeof(g_MVPCB));
     memcpy(g_gpuPassData, &g_passData, sizeof(g_passData));
 
     commandList->SetGraphicsRootConstantBufferView(1, m_mvpUploadBuffer->GetGPUVirtualAddress());
     commandList->SetGraphicsRootConstantBufferView(2, m_passDataUploadBuffer->GetGPUVirtualAddress());
     
+    // Set obj
+    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    commandList->IASetVertexBuffers(0, 1, &m_VertexBufferView);
+    commandList->IASetIndexBuffer(&m_IndexBufferView);
     commandList->DrawIndexedInstanced(m_model->GetIndiciesNum(), 1, 0, 0, 0);
+
+    // shadow debug
+    commandList->SetPipelineState(m_shadowDebugPipelineState.Get());
+    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    commandList->IASetVertexBuffers(0, 1, &m_debugRectVertexBufferView);
+    commandList->IASetIndexBuffer(&m_debugRectIndexBufferView);
+    commandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
 
     m_swapChain->Present(commandList);
 }
@@ -806,7 +1110,7 @@ void DXWindow::UpdateWindowRect(uint32_t width, uint32_t height)
     m_viewport = CD3DX12_VIEWPORT(0.f, 0.f,
         static_cast<float>(m_width), static_cast<float>(m_height));
     m_scissorRect = CD3DX12_RECT(0, 0, static_cast<LONG>(m_width), static_cast<LONG>(m_height));
-    m_camera->UpdateAspectRatio(static_cast<float>(m_width), static_cast<float>(m_height));
+    m_camera->UpdateViewport(static_cast<float>(m_width), static_cast<float>(m_height));
 
 }
 
