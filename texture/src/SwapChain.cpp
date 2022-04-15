@@ -55,11 +55,9 @@ void SwapChain::Present(ComPtr<ID3D12GraphicsCommandList2> d3dCommandList)
     UINT presentFlags = m_tearingSupported && !m_VSync ? DXGI_PRESENT_ALLOW_TEARING : 0;
     ThrowIfFailed(m_swapChain->Present(syncInterval, presentFlags));
 
-    // [!!!保留]back buffer的资源应该和commandlist对应的commandallocator一致，commandallocator已经设置了一次fence
-    // 这里应该就不需要再次signal和wait fence value了
-    // m_frameFenceValues[m_currentBackBufferIndex] = m_commandQueue->Signal();
+    m_frameFenceValues[m_currentBackBufferIndex] = m_commandQueue->Signal();
     m_currentBackBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
-    // m_commandQueue->WaitForFenceValue(m_frameFenceValues[m_currentBackBufferIndex]);
+    m_commandQueue->WaitForFenceValue(m_frameFenceValues[m_currentBackBufferIndex]);
 }
 
 void SwapChain::Resize(UINT width, UINT height, std::shared_ptr<RTVDescriptorHeap>& rtvHeap)

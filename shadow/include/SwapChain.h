@@ -30,7 +30,7 @@ private:
     ComPtr<IDXGISwapChain4> m_swapChain;
     ComPtr<ID3D12Resource> m_backBuffers[NUM_OF_FRAMES];
     UINT m_currentBackBufferIndex;
-    // uint64_t m_frameFenceValues[NUM_OF_FRAMES] = {};
+    uint64_t m_frameFenceValues[NUM_OF_FRAMES] = {};
 
     std::shared_ptr<CommandQueue> m_commandQueue;
 
